@@ -1,0 +1,97 @@
+{
+  "rules": {
+    "players": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid == $uid",
+        ".validate": "newData.hasChildren(['name'])"
+      }
+    },
+
+    "codes": {
+      ".read": "auth != null",
+      "$code": {
+        ".write": "auth != null && !data.exists() && newData.val() == auth.uid",
+        ".validate": "newData.isString() && $code.length == 6"
+      }
+    },
+
+    "status": {
+      ".read": "auth != null",
+      "$uid": { ".write": "auth != null && auth.uid == $uid" }
+    },
+
+    "friends": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        "$friend": {
+          "//": "you may write your own list, or add yourself to someone else's when they accepted",
+          ".write": "auth != null && (auth.uid == $uid || auth.uid == $friend)"
+        }
+      }
+    },
+
+    "invites": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        "$from": {
+          ".write": "auth != null && (auth.uid == $from || auth.uid == $uid)",
+          ".validate": "!newData.exists() || newData.hasChildren(['name'])"
+        }
+      }
+    },
+
+    "rooms": {
+      "$room": {
+        "//": "only players on the host's allow-list can read or take part — friends only",
+        ".read": "auth != null && (!data.exists() || data.child('allow').child(auth.uid).exists())",
+
+        "allow":   { ".write": "auth != null && (!data.parent().exists() || data.parent().child('host').val() == auth.uid)" },
+        "host":    { ".write": "auth != null && (!data.exists() || data.val() == auth.uid)" },
+        "hostName":{ ".write": "auth != null && (!root.child('rooms').child($room).child('host').exists() || root.child('rooms').child($room).child('host').val() == auth.uid)" },
+        "created": { ".write": "auth != null" },
+        "open":    { ".write": "auth != null && root.child('rooms').child($room).child('host').val() == auth.uid" },
+
+        "members": {
+          "$uid": {
+            ".write": "auth != null && (auth.uid == $uid || root.child('rooms').child($room).child('host').val() == auth.uid) && (!root.child('rooms').child($room).child('allow').exists() || root.child('rooms').child($room).child('allow').child(auth.uid).exists())"
+          }
+        },
+
+        "players": {
+          "$uid": {
+            ".write": "auth != null && auth.uid == $uid && root.child('rooms').child($room).child('allow').child(auth.uid).exists()",
+            ".validate": "newData.hasChildren(['x', 'z'])"
+          }
+        },
+
+        "sim": {
+          ".write": "auth != null && root.child('rooms').child($room).child('host').val() == auth.uid"
+        },
+
+        "ev": {
+          "$id": {
+            ".write": "auth != null && root.child('rooms').child($room).child('allow').child(auth.uid).exists()"
+          }
+        },
+
+        "chat": {
+          "$id": {
+            ".write": "auth != null && root.child('rooms').child($room).child('allow').child(auth.uid).exists() && (!newData.exists() || newData.child('m').isString())"
+          }
+        },
+
+        ".write": "auth != null && (!data.exists() || data.child('host').val() == auth.uid)"
+      }
+    },
+
+    "leaderboard": {
+      ".read": "auth != null",
+      ".indexOn": "score",
+      "$uid": {
+        ".write": "auth != null && auth.uid == $uid",
+        ".validate": "newData.hasChildren(['name', 'score']) && newData.child('score').isNumber() && newData.child('score').val() >= 0 && newData.child('score').val() < 10000000"
+      }
+    }
+  }
+}
