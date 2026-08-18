@@ -28,19 +28,48 @@
 
   const notify = () => { if (cbs.change) cbs.change(state); };
 
-  /* ---------- config ---------- */
-  function getConfig() {
+  /* ---------- config ----------
+     Resolution order: a project the player pasted in (their browser only), then
+     window.FIREBASE_CONFIG for self-hosting, then /api/config which reads the
+     deployment's environment variables. Nothing is hardcoded in the source. */
+  let remoteCfg;          // undefined = not fetched, null = none available
+
+  function localConfig() {
     try {
       const raw = localStorage.getItem(CFG_KEY);
       if (raw) return JSON.parse(raw);
     } catch (e) { /* ignore */ }
-    return g.FIREBASE_CONFIG && g.FIREBASE_CONFIG.apiKey && !/YOUR_/.test(g.FIREBASE_CONFIG.apiKey)
-      ? g.FIREBASE_CONFIG : null;
+    if (g.FIREBASE_CONFIG && g.FIREBASE_CONFIG.apiKey) return g.FIREBASE_CONFIG;
+    return null;
   }
+
+  async function fetchRemoteConfig() {
+    if (remoteCfg !== undefined) return remoteCfg;
+    try {
+      const r = await fetch('/api/config', { cache: 'no-store' });
+      if (!r.ok) throw new Error('status ' + r.status);
+      const j = await r.json();
+      remoteCfg = j && j.configured && j.config && j.config.apiKey ? j.config : null;
+    } catch (e) {
+      remoteCfg = null;
+    }
+    return remoteCfg;
+  }
+
+  async function resolveConfig() {
+    return localConfig() || await fetchRemoteConfig();
+  }
+
+  /* Synchronous view, for UI that only needs to know whether anything is known yet. */
+  function getConfig() { return localConfig() || remoteCfg || null; }
 
   function setConfig(cfg) {
     localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
   }
+
+  /* true once we know a project is reachable; the UI awaits ready() before
+     deciding whether to show the setup panel. */
+  async function ready() { return !!(await resolveConfig()); }
 
   function clearConfig() { localStorage.removeItem(CFG_KEY); }
 
@@ -61,8 +90,10 @@
   async function connect() {
     if (state.ready) return true;
     if (state.loading) return false;
-    const cfg = getConfig();
-    if (!cfg) { state.error = 'no-config'; return false; }
+    state.loading = true; notify();
+    const cfg = await resolveConfig();
+    state.loading = false;
+    if (!cfg) { state.error = 'no-config'; notify(); return false; }
     if (!cfg.databaseURL) { state.error = 'Config is missing databaseURL (enable Realtime Database).'; notify(); return false; }
     state.loading = true; state.error = null; notify();
     try {
@@ -377,12 +408,13 @@
   }
 
   g.Net = {
-    state, connect, getConfig, setConfig, clearConfig, parseConfig,
+    state, connect, getConfig, resolveConfig, setConfig, clearConfig, parseConfig,
     setName, requestFriend, acceptInvite, declineInvite, removeFriend,
     createRoom, joinRoom, leaveRoom, refreshAllow,
     sendSelf, sendSim, sendEvent, sendChat,
-    submitScore, leaderboard,
+    submitScore, leaderboard, ready,
     on(k, fn) { cbs[k] = fn; },
     get configured() { return !!getConfig(); },
+    get usingOwnProject() { return !!localConfig(); },
   };
 })(window);

@@ -13,6 +13,17 @@
   const A = g.Atlas;
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
+  function mulM(o, a, b) {
+    for (let i = 0; i < 4; i++) {
+      const b0 = b[i * 4], b1 = b[i * 4 + 1], b2 = b[i * 4 + 2], b3 = b[i * 4 + 3];
+      o[i * 4]     = b0 * a[0] + b1 * a[4] + b2 * a[8]  + b3 * a[12];
+      o[i * 4 + 1] = b0 * a[1] + b1 * a[5] + b2 * a[9]  + b3 * a[13];
+      o[i * 4 + 2] = b0 * a[2] + b1 * a[6] + b2 * a[10] + b3 * a[14];
+      o[i * 4 + 3] = b0 * a[3] + b1 * a[7] + b2 * a[11] + b3 * a[15];
+    }
+    return o;
+  }
+
   function toRGB(c) {
     if (c === undefined) return [255, 255, 255];
     if (typeof c === 'number') return [(c >> 16) & 255, (c >> 8) & 255, c & 255];
@@ -22,7 +33,7 @@
   /* Cheap baked AO: geometry gets darker near the floor, downward faces darker still.
      Costs nothing at runtime and grounds every object convincingly. */
   function autoAO(y, ny) {
-    let a = 0.56 + 0.44 * clamp(y / 0.8, 0, 1);
+    let a = 0.62 + 0.38 * clamp(y / 0.8, 0, 1);
     if (ny < -0.4) a *= 0.7;
     else if (ny > 0.7) a *= 1.0;
     else a *= 0.94;
@@ -35,6 +46,44 @@
       this.idx = []; this.n = 0;
       this.ranges = {};
       this._markName = null; this._markStart = 0;
+      this.mat = null;          // current transform, applied as vertices are emitted
+      this._stack = [];
+    }
+
+    /* Full euler placement, for the few props that need an axis other than Y —
+       wheels, angled panels, radial fittings. */
+    atE(x, y, z, rx, ry, rz, fn, sc) {
+      const M = g.M4, t = new Float32Array(16), a = new Float32Array(16), b = new Float32Array(16);
+      M.fromT(t, x, y, z);
+      M.fromRY(a, ry || 0); M.mul(b, t, a);
+      M.fromRX(a, rx || 0); M.mul(t, b, a);
+      M.fromRZ(a, rz || 0); M.mul(b, t, a);
+      if (sc !== undefined && sc !== 1) { M.fromS(a, sc, sc, sc); M.mul(t, b, a); } else { t.set(b); }
+      const prev = this.mat;
+      this.mat = prev ? mulM(new Float32Array(16), prev, t) : t;
+      this._stack.push(prev);
+      fn(this);
+      this.mat = this._stack.pop();
+      return this;
+    }
+
+    /* Run fn with a translate+rotateY(+scale) transform applied to everything it
+       emits. Lets the world use angled roofs, tilted signs and radial props while
+       every builder primitive stays axis-aligned and simple. */
+    at(x, y, z, ry, fn, sx, sy, sz) {
+      const c = Math.cos(ry || 0), s2 = Math.sin(ry || 0);
+      const m = new Float32Array([
+        c * (sx === undefined ? 1 : sx), 0, -s2 * (sx === undefined ? 1 : sx), 0,
+        0, (sy === undefined ? 1 : sy), 0, 0,
+        s2 * (sz === undefined ? 1 : sz), 0, c * (sz === undefined ? 1 : sz), 0,
+        x, y, z, 1,
+      ]);
+      const prev = this.mat;
+      this.mat = prev ? mulM(new Float32Array(16), prev, m) : m;
+      this._stack.push(prev);
+      fn(this);
+      this.mat = this._stack.pop();
+      return this;
     }
 
     mark(name) {
@@ -49,6 +98,17 @@
     }
 
     vert(x, y, z, nx, ny, nz, u, v, r, gg, b, ao) {
+      const m = this.mat;
+      if (m) {
+        const px = m[0] * x + m[4] * y + m[8] * z + m[12];
+        const py = m[1] * x + m[5] * y + m[9] * z + m[13];
+        const pz = m[2] * x + m[6] * y + m[10] * z + m[14];
+        let tx = m[0] * nx + m[4] * ny + m[8] * nz;
+        let ty = m[1] * nx + m[5] * ny + m[9] * nz;
+        let tz = m[2] * nx + m[6] * ny + m[10] * nz;
+        const l = Math.hypot(tx, ty, tz) || 1;
+        x = px; y = py; z = pz; nx = tx / l; ny = ty / l; nz = tz / l;
+      }
       this.pos.push(x, y, z); this.nrm.push(nx, ny, nz); this.uv.push(u, v);
       this.col.push(r, gg, b, clamp(Math.round(ao * 255), 0, 255));
       return this.n++;
@@ -69,9 +129,9 @@
       const len = Math.hypot(nx, ny, nz) || 1;
       nx /= len; ny /= len; nz /= len;
 
-      const uvs = flipV
-        ? [[0, 1], [1, 1], [1, 0], [0, 0]]
-        : [[0, 0], [1, 0], [1, 1], [0, 1]];
+      const uvs = flipV === false
+        ? [[0, 0], [1, 0], [1, 1], [0, 1]]
+        : [[0, 1], [1, 1], [1, 0], [0, 0]];
       const pts = [p0, p1, p2, p3];
       const base = this.n;
       for (let i = 0; i < 4; i++) {

@@ -1,18 +1,9 @@
-/* Firebase web config.
+/* No credentials live in this file, and none are committed to the repository.
 
-   These values are public by design — Firebase ships them to every browser that
-   loads the app, and the API key is a project identifier, not a credential. All
-   access control lives in firebase.rules.json (published to the Realtime
-   Database), which is what actually keeps rooms friends-only.
+   The Firebase web config is served at runtime from /api/config, which reads it
+   from the deployment's environment variables (see api/config.js). Players can
+   also point the game at their own Firebase project from the in-game
+   Multiplayer → Connection panel; that is stored in their browser only.
 
-   On Vercel, `npm run build` regenerates this file from FIREBASE_* environment
-   variables when they are set, so the config can be managed there instead. */
-window.FIREBASE_CONFIG = {
-  apiKey: 'AIzaSyCwfPTLcnRpiRGWmRNCZErb0HbA9cTPdio',
-  authDomain: 'mickeyd-s.firebaseapp.com',
-  databaseURL: 'https://mickeyd-s-default-rtdb.firebaseio.com',
-  projectId: 'mickeyd-s',
-  storageBucket: 'mickeyd-s.firebasestorage.app',
-  messagingSenderId: '1016257013322',
-  appId: '1:1016257013322:web:e91919cb0fdb50e5b168b3',
-};
+   If you are self-hosting somewhere without serverless functions, you can set
+   window.FIREBASE_CONFIG here instead — but prefer the endpoint. */

@@ -10,21 +10,21 @@
 
     /* ---- humanoid, parts built around their own pivot ---- */
     b.mark('legL'); b.box(0, -0.41, 0, 0.17, 0.82, 0.22, { tint: 0x3a4152, flat: 0.86 });
-    b.box(0, -0.79, 0.02, 0.19, 0.09, 0.28, { tint: 0x22252c, flat: 0.7 });
+    b.box(0, -0.79, 0.02, 0.20, 0.10, 0.29, { tint: 0xf2f2f4, flat: 0.85 });
     b.mark('legR'); b.box(0, -0.41, 0, 0.17, 0.82, 0.22, { tint: 0x3a4152, flat: 0.86 });
-    b.box(0, -0.79, 0.02, 0.19, 0.09, 0.28, { tint: 0x22252c, flat: 0.7 });
+    b.box(0, -0.79, 0.02, 0.20, 0.10, 0.29, { tint: 0xf2f2f4, flat: 0.85 });
 
     b.mark('torso');
     b.box(0, 0.33, 0, 0.52, 0.66, 0.30, { tint: 0xffffff, flat: 1.0 });
-    b.box(0, 0.60, 0.153, 0.30, 0.16, 0.02, { tint: 0xf2f2f2, flat: 1.05 }); // collar
-    b.box(0, 0.05, 0.153, 0.52, 0.10, 0.015, { tint: 0xe0e0e0, flat: 0.9 }); // hem
+    b.box(0, 0.60, 0.153, 0.31, 0.16, 0.025, { tint: 0xffffff, flat: 1.12 }); // collar
+    b.box(0, 0.05, 0.153, 0.52, 0.09, 0.018, { tint: 0xe6e6e8, flat: 0.95 }); // hem
 
     b.mark('head');
     b.box(0, 0.16, 0, 0.30, 0.32, 0.28, { tint: 0xffffff, flat: 1.06 });
     b.box(-0.07, 0.20, 0.142, 0.055, 0.06, 0.02, { tint: 0x2a2723, flat: 1.0 });
     b.box(0.07, 0.20, 0.142, 0.055, 0.06, 0.02, { tint: 0x2a2723, flat: 1.0 });
     b.box(0, 0.09, 0.145, 0.11, 0.025, 0.015, { tint: 0xc98a76, flat: 0.95 });
-    b.box(0, 0.325, 0, 0.315, 0.075, 0.295, { tint: 0x3a2c22, flat: 0.8 }); // hair
+    b.box(0, 0.325, 0, 0.318, 0.08, 0.298, { tint: 0x3a2c22, flat: 0.85 }); // hair
 
     b.mark('cap');
     b.box(0, 0.36, 0, 0.33, 0.09, 0.31, { tint: 0xffffff, flat: 1.05 });

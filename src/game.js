@@ -18,9 +18,11 @@
   const ITEM_KEYS = Object.keys(ITEMS);
   const MODEL_OF = { burger: 'burger', fries: 'fries', drink: 'drink', nuggets: 'nuggets', flurry: 'flurry', bigmac: 'burger' };
 
-  const SHIRTS = [0xdc4a3d, 0x3d6fdc, 0x37a06a, 0xe0a72c, 0x8f4fd0, 0x2fb3c0, 0xd8567f, 0x4a5568, 0xe07a2c, 0x5d8f3a];
-  const SKINS = [0xf0c8a0, 0xdca878, 0xb98055, 0x8d5a38, 0x5f3a24, 0xf6d9b8];
-  const HAIRS = [0x2a1f18, 0x4a3324, 0x7a5230, 0xa8752f, 0x1a1a1a, 0x8c8c8c, 0xc0392b];
+  const SHIRTS = [0xef3d34, 0x2f7ff0, 0x2fb757, 0xffc02e, 0x9b4fe0, 0x25c3d4,
+                  0xff6fa8, 0x4d5a6b, 0xff8a2b, 0x74c62f, 0xffffff, 0x1f2937];
+  const PANTS  = [0x2f3a4c, 0x1f2937, 0x3f4a5c, 0x5a4632, 0x2b3f6b];
+  const SKINS = [0xf5cda6, 0xe2b083, 0xc08a5c, 0x96603c, 0x653f26, 0xfae0c4];
+  const HAIRS = [0x2a1f18, 0x4a3324, 0x7a5230, 0xc79a3a, 0x141414, 0x9a9a9a, 0xd2452f];
 
   const xpForLevel = (l) => Math.round(55 * Math.pow(l, 1.42));
 
@@ -246,7 +248,7 @@
       const nz = p.z + p.vz * dt;
       if (!this.collide(p.x, nz, r)) p.z = nz; else p.vz = 0;
 
-      p.x = clamp(p.x, -32, 32); p.z = clamp(p.z, -32, 25);
+      p.x = clamp(p.x, -32, 32); p.z = clamp(p.z, -32, 36);
 
       const spd = Math.hypot(p.vx, p.vz);
       p.speed = spd;
@@ -498,11 +500,12 @@
       const c = {
         id: this.nextId++,
         name: names[Math.floor(rnd() * names.length)],
-        x: this.L.SPAWN[0] + (rnd() - 0.5) * 6, z: this.L.SPAWN[1] + rnd() * 4,
+        x: this.L.SPAWN[0] + (rnd() - 0.5) * 2.2, z: this.L.SPAWN[1] + rnd() * 4,
         yaw: Math.PI, vx: 0, vz: 0,
         state: 'entering', slot: -1, seat: -1,
         anim: 0, patience: 60, patienceMax: 60, timer: 0,
         shirt: SHIRTS[Math.floor(rnd() * SHIRTS.length)],
+        pants: PANTS[Math.floor(rnd() * PANTS.length)],
         skin: SKINS[Math.floor(rnd() * SKINS.length)],
         hair: HAIRS[Math.floor(rnd() * HAIRS.length)],
         scale: 0.92 + rnd() * 0.18,
@@ -766,7 +769,8 @@
       const cs = this.customers.map(c =>
         [c.id, Math.max(0, STATES.indexOf(c.state)), c.x.toFixed(2), c.z.toFixed(2), c.yaw.toFixed(2),
          (c.patience / (c.patienceMax || 1)).toFixed(2), c.anim.toFixed(1),
-         c.shirt.toString(16), c.skin.toString(16), c.hair.toString(16), c.scale.toFixed(2), c.name].join(',')
+         c.shirt.toString(16), c.skin.toString(16), c.hair.toString(16), c.scale.toFixed(2),
+         (c.pants || 0x2f3a4c).toString(16), c.name].join(',')
       ).join(';');
       const sts = Object.keys(this.stations).map(k =>
         k + ':' + this.stations[k].slots.map(s => s ? `${s.item},${s.t.toFixed(2)},${s.cook},${s.burn},${s.burnt ? 1 : 0}` : '').join('|')
@@ -791,8 +795,9 @@
           seen[id] = true;
           let c = this.customers.find(x => x.id === id);
           if (!c) {
-            c = { id, name: f[11] || 'Guest', x: +f[2], z: +f[3], yaw: +f[4], vx: 0, vz: 0, anim: 0, slot: -1, seat: -1,
+            c = { id, name: f[12] || 'Guest', x: +f[2], z: +f[3], yaw: +f[4], vx: 0, vz: 0, anim: 0, slot: -1, seat: -1,
                   shirt: parseInt(f[7], 16), skin: parseInt(f[8], 16), hair: parseInt(f[9], 16), scale: +f[10],
+                  pants: parseInt(f[11], 16),
                   patience: 1, patienceMax: 1, happy: 1, tx: +f[2], tz: +f[3], tyaw: +f[4] };
             this.customers.push(c);
           }
@@ -970,8 +975,8 @@
           const pe = peers[uid];
           if (!visible(pe.ix, pe.iz)) continue;
           this.drawHumanoid(pe.ix, pe.iy || 0, pe.iz, pe.iyaw, pe.anim || 0, 1,
-            { shirt: 0x2f3a4a, skin: 0xe8b48f, hair: 0x2a1f18, pants: 0x22262d },
-            { cap: 0xda291c, sleeve: 0x2f3a4a });
+            { shirt: 0xe01b22, skin: 0xe8b48f, hair: 0x2a1f18, pants: 0x2b3040 },
+            { cap: 0xffc72c, sleeve: 0xe01b22 });
           if (pe.hold) {
             M4.fromT(A, pe.ix, (pe.iy || 0) + 1.05, pe.iz);
             M4.fromRY(B, pe.iyaw);
@@ -1029,7 +1034,7 @@
     drawCharacter(c, detail) {
       const sit = c.state === 'eating';
       const root = this.drawHumanoid(c.x, 0, c.z, c.yaw, c.anim, c.scale,
-        { shirt: c.shirt, skin: c.skin, hair: c.hair, pants: 0x36404f }, { sit });
+        { shirt: c.shirt, skin: c.skin, hair: c.hair, pants: c.pants || 0x2f3a4c }, { sit });
       // hair block
       const A = this._a, B = this._b, C = this._c, M = this._m, r = this.r;
       if (!detail) return;

@@ -1,16 +1,13 @@
 #!/usr/bin/env node
 /* Build step for static hosting.
 
-   The game has no bundler and no dependencies — this does exactly two things:
+   The game has no bundler and no dependencies. This stamps a content hash onto
+   every <script src> query string, so a redeploy can never serve a stale mix of
+   old and new modules while still allowing long-lived cache headers on src/*.
 
-   1. If FIREBASE_* environment variables are present (e.g. set on Vercel), it
-      regenerates src/firebase-config.js from them. Otherwise the committed
-      config is left alone, so local and file:// play keep working.
-
-   2. Stamps a content hash onto every <script src> query string, so a redeploy
-      can never serve a stale mix of old and new modules while still allowing
-      long-lived cache headers on src/*.
-*/
+   Firebase config is NOT written into the bundle — it is served at runtime by
+   /api/config from the deployment's environment variables, so no credentials
+   ever land in the repository. */
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -18,33 +15,12 @@ const crypto = require('crypto');
 const root = __dirname;
 const SRC = path.join(root, 'src');
 
-const ENV = {
-  apiKey: 'FIREBASE_API_KEY',
-  authDomain: 'FIREBASE_AUTH_DOMAIN',
-  databaseURL: 'FIREBASE_DATABASE_URL',
-  projectId: 'FIREBASE_PROJECT_ID',
-  storageBucket: 'FIREBASE_STORAGE_BUCKET',
-  messagingSenderId: 'FIREBASE_MESSAGING_SENDER_ID',
-  appId: 'FIREBASE_APP_ID',
-};
-
-function writeConfigFromEnv() {
-  if (!process.env[ENV.apiKey] || !process.env[ENV.databaseURL]) {
-    console.log('build: no FIREBASE_* env vars — keeping the committed src/firebase-config.js');
-    return false;
-  }
-  const cfg = {};
-  for (const [key, envName] of Object.entries(ENV)) {
-    if (process.env[envName]) cfg[key] = process.env[envName];
-  }
-  const body = Object.entries(cfg)
-    .map(([k, v]) => `  ${k}: ${JSON.stringify(v)},`)
-    .join('\n');
-  fs.writeFileSync(path.join(SRC, 'firebase-config.js'),
-    `/* Generated at build time from FIREBASE_* environment variables. Do not edit. */\n` +
-    `window.FIREBASE_CONFIG = {\n${body}\n};\n`);
-  console.log(`build: wrote src/firebase-config.js from env (${Object.keys(cfg).length} keys, project ${cfg.projectId || '?'})`);
-  return true;
+function reportConfig() {
+  const ok = !!(process.env.FIREBASE_API_KEY && process.env.FIREBASE_DATABASE_URL);
+  console.log(ok
+    ? 'build: FIREBASE_* env vars present — /api/config will serve them at runtime'
+    : 'build: no FIREBASE_* env vars — multiplayer will prompt players for their own project');
+  return ok;
 }
 
 function stampCacheBuster() {
@@ -60,6 +36,6 @@ function stampCacheBuster() {
   console.log(`build: stamped asset version ${v}`);
 }
 
-writeConfigFromEnv();
+reportConfig();
 stampCacheBuster();
 console.log('build: done');
