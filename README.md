@@ -72,19 +72,46 @@ the hot path.
 
 ---
 
-## Multiplayer & the leaderboard (optional)
+## Multiplayer & the leaderboard
 
-Co-op runs on **your own free Firebase project**, so your data stays yours. It takes about
-two minutes to set up:
+Co-op and the leaderboard run on the **`mickeyd-s` Firebase project**, already wired up:
+the config lives in `src/firebase-config.js`, anonymous auth is enabled, and
+`firebase.rules.json` is published to the Realtime Database.
+
+To redeploy the rules after editing them:
+
+```bash
+firebase deploy --only database
+```
+
+Anyone can point the game at a **different** Firebase project without touching the code —
+open **Multiplayer → Connection**, paste that project's web config, and it is stored in
+localStorage for that browser only.
+
+<details>
+<summary>Setting up a fresh Firebase project from scratch</summary>
 
 1. Create a project at <https://console.firebase.google.com>.
-2. **Build → Realtime Database → Create database.** Any region; start in locked mode.
+2. **Build → Realtime Database → Create database.**
 3. **Build → Authentication → Sign-in method → Anonymous → Enable.**
-4. **Project settings → Your apps → Web app** and copy the config object.
-5. Paste it into the game: **Multiplayer → Connection → Save & connect**.
-   (Or fill in `src/firebase-config.js` to bake it in.)
-6. In the Realtime Database **Rules** tab, paste the contents of `firebase.rules.json` and
-   publish. The rules enforce friends-only rooms server-side.
+4. **Project settings → Your apps → Web app**, copy the config into
+   `src/firebase-config.js` (or paste it into the in-game Connection panel).
+5. `firebase deploy --only database` to publish `firebase.rules.json`.
+
+</details>
+
+### About the API key
+
+Firebase web config values are **public by design** — the SDK ships them to every browser
+that loads the page, and the API key is a project identifier rather than a credential.
+Access control is entirely in `firebase.rules.json`, which is verified to enforce:
+
+* you can only write your own profile, score and player position
+* a friend code can be claimed once and never stolen
+* **a room is readable and joinable only by uids on the host's allow-list** — the friends-only
+  guarantee holds even if someone guesses a room code
+* only the host may write the shared simulation snapshot
+* scores are range-checked, so the leaderboard cannot be stuffed
 
 Then:
 
@@ -108,6 +135,32 @@ Bandwidth is a few KB/s per player, which sits comfortably inside the Firebase f
 
 ---
 
+## Deploying
+
+The site is static, so any host works. It is set up for Vercel:
+
+```bash
+vercel --prod
+```
+
+`vercel.json` runs `build.js`, which does two things and nothing else:
+
+1. **Regenerates `src/firebase-config.js` from `FIREBASE_*` environment variables** when they
+   are set, so the project can be configured on Vercel instead of in git. With no env vars
+   present it leaves the committed config alone, which is what keeps local and `file://`
+   play working.
+2. **Stamps a content hash onto every `<script src>` query string**, so `src/*` can be served
+   `immutable` for a year while a redeploy can never serve a stale mix of modules.
+
+The environment variables it reads:
+
+```
+FIREBASE_API_KEY            FIREBASE_PROJECT_ID
+FIREBASE_AUTH_DOMAIN        FIREBASE_STORAGE_BUCKET
+FIREBASE_DATABASE_URL       FIREBASE_MESSAGING_SENDER_ID
+                            FIREBASE_APP_ID
+```
+
 ## Layout
 
 ```
@@ -123,6 +176,9 @@ src/game.js             player controller, customer AI, stations, economy, rende
 src/ui.js               HUD, menus, settings, multiplayer panels, leaderboard
 src/main.js             boot, input, frame loop, adaptive resolution
 firebase.rules.json     Realtime Database security rules
+firebase.json           Firebase CLI config (database rules target)
+build.js                optional build step: env-var config + cache-busting
+vercel.json             static hosting config and cache headers
 ```
 
 No build step. No package manager. Edit a file and reload.

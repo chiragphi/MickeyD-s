@@ -1,0 +1,11 @@
+{
+  "name": "golden-shift",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A 3D fast-food simulator running on a custom zero-dependency WebGL engine",
+  "scripts": {
+    "build": "node build.js",
+    "dev": "node build.js && python3 -m http.server 8000"
+  },
+  "license": "MIT"
+}

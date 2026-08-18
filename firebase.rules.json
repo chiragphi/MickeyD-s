@@ -25,7 +25,6 @@
       "$uid": {
         ".read": "auth != null && auth.uid == $uid",
         "$friend": {
-          "//": "you may write your own list, or add yourself to someone else's when they accepted",
           ".write": "auth != null && (auth.uid == $uid || auth.uid == $friend)"
         }
       }
@@ -43,7 +42,6 @@
 
     "rooms": {
       "$room": {
-        "//": "only players on the host's allow-list can read or take part — friends only",
         ".read": "auth != null && (!data.exists() || data.child('allow').child(auth.uid).exists())",
 
         "allow":   { ".write": "auth != null && (!data.parent().exists() || data.parent().child('host').val() == auth.uid)" },
