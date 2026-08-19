@@ -61,7 +61,9 @@ void main(){
     gl.shaderSource(s, src);
     gl.compileShader(s);
     if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
-      throw new Error('shader: ' + gl.getShaderInfoLog(s) + '\n' + src);
+      // the full source would swamp the on-screen report; the info log is the useful part
+      throw new Error('Shader compile failed (' + (type === gl.VERTEX_SHADER ? 'vertex' : 'fragment')
+        + '): ' + (gl.getShaderInfoLog(s) || 'no info log'));
     }
     return s;
   }
@@ -134,6 +136,15 @@ void main(){
 
       const info = gl.getExtension('WEBGL_debug_renderer_info');
       this.gpu = info ? (gl.getParameter(info.UNMASKED_RENDERER_WEBGL) || '') : '';
+      this.maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE) || 1024;
+      this.limits = {
+        maxTexture: this.maxTexture,
+        maxVaryings: gl.getParameter(gl.MAX_VARYING_VECTORS),
+        maxVertUniforms: gl.getParameter(gl.MAX_VERTEX_UNIFORM_VECTORS),
+        maxFragUniforms: gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS),
+        maxAttribs: gl.getParameter(gl.MAX_VERTEX_ATTRIBS),
+      };
+      this.extensions = (gl.getSupportedExtensions() || []).join(',');
     }
 
     texture(canvas, mip) {
@@ -141,7 +152,25 @@ void main(){
       const t = gl.createTexture();
       gl.bindTexture(gl.TEXTURE_2D, t);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+
+      /* Old integrated parts cap texture size well below what desktop GPUs allow.
+         Scale down rather than handing the driver something it will reject. */
+      let src = canvas;
+      if (canvas.width > this.maxTexture) {
+        const c2 = document.createElement('canvas');
+        c2.width = c2.height = this.maxTexture;
+        c2.getContext('2d').drawImage(canvas, 0, 0, c2.width, c2.height);
+        src = c2;
+      }
+      try {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+      } catch (e) {
+        // last resort: a 1x1 white texture keeps vertex colours working
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+          new Uint8Array([255, 255, 255, 255]));
+        mip = false;
+        this.textureFallback = String(e && e.message || e);
+      }
       if (mip !== false) {
         gl.generateMipmap(gl.TEXTURE_2D);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);

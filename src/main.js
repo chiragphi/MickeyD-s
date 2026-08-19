@@ -17,44 +17,89 @@
     pointerLocked: false,
 
     async boot() {
-      /* Everything below runs inside one guard. A silent throw here used to leave
-         the loading screen up forever with no clue why — which is exactly what a
-         weak Chromebook would hit. Now any failure, including one we never
-         anticipated, surfaces on screen with copyable diagnostics. */
       this._diag = [];
       const note = (m) => { this._diag.push(m); };
-      const stall = setTimeout(() => this.fail('Loading is taking too long',
-        new Error('Boot did not finish within 25 seconds.')), 25000);
+      this.note = note;
+
+      note('ua: ' + navigator.userAgent);
+      note('cores: ' + (navigator.hardwareConcurrency || '?') + ' · memory: ' + (navigator.deviceMemory || '?') + 'GB'
+        + ' · dpr: ' + (window.devicePixelRatio || 1));
+
+      const forced = /[?&]safe=1/.test(location.search);
+      /* Two passes: full detail, then a conservative one. A weak machine that
+         cannot manage the first should still end up playing rather than reading
+         an error, so the fallback runs automatically before anything is shown. */
+      try {
+        await this.attempt(forced);
+        return;
+      } catch (e) {
+        note('first attempt failed: ' + (e && e.message || e));
+        console.warn('[golden shift] retrying in safe mode:', e);
+        this._firstError = e;
+      }
 
       try {
-        note('ua: ' + navigator.userAgent);
-        note('cores: ' + (navigator.hardwareConcurrency || '?') + ' · memory: ' + (navigator.deviceMemory || '?') + 'GB');
+        this.teardown();
+        this.setLoad('Retrying in safe mode…');
+        await frame();
+        await this.attempt(true);
+        UI.toast('Running in safe mode — reduced detail for this device', 'warn');
+      } catch (e2) {
+        note('safe mode failed: ' + (e2 && e2.message || e2));
+        this.fail('Could not start the game', e2);
+      }
+    },
 
-        this.setLoad('Starting graphics…');
-        try {
-          this.renderer = new g.Renderer(canvas);
-        } catch (e) {
-          clearTimeout(stall);
-          this.fail('WebGL is unavailable', e,
-            'Try enabling hardware acceleration in your browser settings, then reload. ' +
-            'On a managed Chromebook this may be turned off by policy.');
-          return;
+    /* Release anything the failed attempt created so the retry starts clean. */
+    teardown() {
+      try {
+        if (this.renderer && this.renderer.gl) {
+          const lose = this.renderer.gl.getExtension('WEBGL_lose_context');
+          if (lose && this._ctxBroken) lose.loseContext();
         }
-        note('gpu: ' + (this.renderer.gpu || 'unknown'));
-        note('uint32 indices: ' + this.renderer.uintIndex);
+      } catch (e) { /* ignore */ }
+      this.game = null;
+    },
+
+    async attempt(safe) {
+      const note = this.note;
+      const stall = setTimeout(() => this.fail('Loading is taking too long',
+        new Error('Boot did not finish within 30 seconds.')), 30000);
+      try {
+        this.setLoad('Starting graphics…');
+        if (!this.renderer) {
+          try {
+            this.renderer = new g.Renderer(canvas);
+          } catch (e) {
+            clearTimeout(stall);
+            this.fail('WebGL is unavailable', e,
+              'Try enabling hardware acceleration in your browser settings, then reload. '
+              + 'On a managed Chromebook this may be switched off by policy.');
+            this._fatal = true;
+            return;
+          }
+          note('gpu: ' + (this.renderer.gpu || 'unknown'));
+          note('limits: ' + JSON.stringify(this.renderer.limits));
+          note('uint32 indices: ' + this.renderer.uintIndex);
+          note('extensions: ' + (this.renderer.extensions || 'none').slice(0, 400));
+        }
 
         const opts = UI.loadOpts(this.renderer.gpu);
-        g.GameData.SFX.enabled = opts.sound;
-        note('preset: ' + opts.quality);
+        if (safe) {
+          Object.assign(opts, UI.PRESETS.potato, { quality: 'potato', particles: false, adaptive: true });
+        }
+        g.GameData.SFX.enabled = opts.sound && !safe;
+        note('preset: ' + opts.quality + (safe ? ' (safe mode)' : ''));
 
-        /* Drivers without 32-bit indices cap a mesh at 65 535 vertices, so those
-           machines get a lighter world rather than a failed load. */
-        const lite = !this.renderer.uintIndex || opts.quality === 'potato';
+        const lite = safe || !this.renderer.uintIndex || opts.quality === 'potato';
         note('detail: ' + (lite ? 'lite' : 'full'));
 
         this.setLoad('Painting textures…');
         await frame();
-        this.renderer.texture(g.Atlas.build(), true);
+        const atlas = g.Atlas.build(safe ? 512 : Math.min(1024, this.renderer.maxTexture));
+        note('atlas: ' + atlas.width + 'px');
+        this.renderer.texture(atlas, !safe);
+        if (this.renderer.textureFallback) note('texture fallback: ' + this.renderer.textureFallback);
 
         this.setLoad('Building the restaurant…');
         await frame();
@@ -77,8 +122,8 @@
         g.Net.on('sim', (v) => this.game.applySim(v));
         g.Net.on('event', (v) => this.game.applyEvent(v));
 
-        UI.bind(this);
-        this.bindInput();
+        if (!this._bound) { UI.bind(this); this.bindInput(); this._bound = true; }
+        else UI.syncSettings();
         this.resize(true);
 
         this.stats = {
@@ -88,13 +133,20 @@
         console.log(`[golden shift] ${this.stats.verts | 0} verts / ${this.stats.tris | 0} tris · `
           + `gpu: ${this.renderer.gpu || 'unknown'} · preset: ${opts.quality}${lite ? ' (lite)' : ''}`);
 
+        // one real frame before declaring success, so a draw-time failure is caught here
+        this.game.render(canvas.width, canvas.height);
+        const glErr = this.renderer.gl.getError();
+        if (glErr) note('gl error after first frame: 0x' + glErr.toString(16));
+
         clearTimeout(stall);
+        this.safeMode = !!safe;
         document.getElementById('loading').classList.add('done');
         this.last = performance.now();
         requestAnimationFrame(this.loop.bind(this));
       } catch (e) {
         clearTimeout(stall);
-        this.fail('Could not start the game', e);
+        if (this._fatal) return;
+        throw e;
       }
     },
 
@@ -118,7 +170,12 @@
       h.style.cssText = 'font-size:22px;font-weight:700;margin-bottom:10px;letter-spacing:-.02em';
       const p = document.createElement('p');
       p.textContent = hint || 'The details below help track this down.';
-      p.style.cssText = 'color:#a1a1aa;font-size:14px;line-height:1.6;margin-bottom:14px';
+      p.style.cssText = 'color:#a1a1aa;font-size:14px;line-height:1.6;margin-bottom:12px';
+      const why = document.createElement('p');
+      why.textContent = (err && err.message) ? String(err.message).slice(0, 300) : String(err);
+      why.style.cssText = 'color:#fca5a5;font-size:13.5px;line-height:1.5;margin-bottom:14px;'
+        + 'font-family:ui-monospace,Menlo,monospace;background:#1b1416;border:1px solid #3a2226;'
+        + 'border-radius:10px;padding:10px 12px;word-break:break-word';
       const pre = document.createElement('textarea');
       pre.readOnly = true;
       pre.value = diag;
@@ -135,13 +192,22 @@
         try { navigator.clipboard.writeText(diag); } catch (e) { document.execCommand('copy'); }
         copy.textContent = 'Copied';
       };
+      const safe = document.createElement('button');
+      safe.textContent = 'Try safe mode';
+      safe.style.cssText = 'padding:11px 18px;border-radius:999px;background:#27272a;color:#fff;'
+        + 'font-weight:600;font-size:14px;border:0;cursor:pointer';
+      safe.onclick = () => {
+        const u = new URL(location.href);
+        u.searchParams.set('safe', '1');
+        location.href = u.toString();
+      };
       const again = document.createElement('button');
       again.textContent = 'Reload';
       again.style.cssText = 'padding:11px 18px;border-radius:999px;background:#27272a;color:#fff;'
         + 'font-weight:600;font-size:14px;border:0;cursor:pointer';
       again.onclick = () => location.reload();
-      row.append(copy, again);
-      wrap.append(h, p, pre, row);
+      row.append(copy, safe, again);
+      wrap.append(h, p, why, pre, row);
       box.appendChild(wrap);
       console.error('[golden shift]', title, err);
     },
@@ -355,6 +421,15 @@
   });
 
   g.Main = Main;
+
+  /* A script error before or outside boot would otherwise leave the loading
+     screen up with nothing to go on. */
+  addEventListener('error', (ev) => {
+    if (Main.game || Main._reported) return;
+    Main._reported = true;
+    Main.fail('Could not start the game', ev.error || new Error(ev.message || 'Unknown script error'));
+  });
+
   if (document.readyState === 'loading') addEventListener('DOMContentLoaded', () => Main.boot());
   else Main.boot();
 })(window);

@@ -45,7 +45,7 @@
     o.globalAlpha = 1;
   }
 
-  function build() {
+  function build(targetSize) {
     const c = document.createElement('canvas');
     c.width = c.height = SIZE;
     const x = c.getContext('2d', { alpha: true, willReadFrequently: false });
@@ -428,6 +428,13 @@
     lettered(T.SIGN_OPEN,  'OPEN 24 HRS',  { aspect: 3.2, size: 54, bg: P.ink, fg: P.yellow, borderCol: P.yellow });
     lettered(T.SIGN_MENU,  'ORDER HERE',   { aspect: 3.0, size: 56, bg: P.yellow, fg: P.ink, borderCol: P.red });
 
+    /* UVs are normalised, so a smaller atlas needs no other change. */
+    if (targetSize && targetSize < SIZE) {
+      const small = document.createElement('canvas');
+      small.width = small.height = targetSize;
+      small.getContext('2d').drawImage(c, 0, 0, targetSize, targetSize);
+      return small;
+    }
     return c;
   }
 
