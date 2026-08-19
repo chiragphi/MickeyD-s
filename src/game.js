@@ -937,7 +937,7 @@
       const r = this.r, R = this.R, M = this._m, A = this._a, B = this._b, C = this._c;
       const p = this.player;
       const far = this.opts.viewDistance;
-      M4.persp(this.proj, this.opts.fov * Math.PI / 180, w / h, 0.06, far);
+      M4.persp(this.proj, this.opts.fov * Math.PI / 180, w / h, 0.22, far);
       M4.view(this.viewM, this.eye[0], this.eye[1], this.eye[2], p.yaw, p.pitch);
       M4.mul(this.vp, this.proj, this.viewM);
       this.env.fogK = this.opts.fogK;

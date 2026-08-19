@@ -76,7 +76,7 @@ void main(){
       const attempts = [
         { alpha: false, antialias: false, depth: true, stencil: false,
           powerPreference: 'low-power', preserveDrawingBuffer: false,
-          desynchronized: true, failIfMajorPerformanceCaveat: false },
+          failIfMajorPerformanceCaveat: false },
         { alpha: false, antialias: false, depth: true, stencil: false,
           failIfMajorPerformanceCaveat: false },
         { alpha: false, depth: true },

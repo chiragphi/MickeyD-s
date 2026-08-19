@@ -466,20 +466,47 @@
       this.adapt(dt);
     },
 
-    /* Nudge the internal render resolution to hold ~60 FPS without ever
-       touching the CSS size, so the UI stays crisp. */
+    /* Nudge the internal render resolution to hold ~60 FPS without ever touching
+       the CSS size, so the UI stays crisp.
+
+       Every change reallocates the drawing buffer, which on some ChromeOS drivers
+       shows as a visible flash. A machine sitting near the threshold would
+       otherwise oscillate up and down forever, flashing each time — so changes
+       carry a cooldown, and repeated reversals stop the adjustment entirely and
+       settle on the lower of the two. */
     adapt(dt) {
-      if (!UI.opts.adaptive || !this.playing()) return;
+      if (!UI.opts.adaptive || !this.playing() || this._adaptLocked) return;
       this._adaptT += dt;
+      this._sinceChange = (this._sinceChange || 0) + dt;
       if (this._adaptT < 0.5) return;
       this._adaptT = 0;
+      if (this._sinceChange < 3) return;              // settle after a change
+
       const fps = this._fps;
+      const apply = (next, dir) => {
+        if (Math.abs(next - this.renderScale) < 0.001) return;
+        if (this._lastDir && dir !== this._lastDir) {
+          this._reversals = (this._reversals || 0) + 1;
+          if (this._reversals >= 3) {
+            this._adaptLocked = true;
+            this.renderScale = Math.min(this.renderScale, next);
+            this.resize(true);
+            console.log('[golden shift] render scale settled at', this.renderScale.toFixed(2));
+            return;
+          }
+        }
+        this._lastDir = dir;
+        this.renderScale = next;
+        this._sinceChange = 0;
+        this.resize(true);
+      };
+
       if (fps < 52 && this.renderScale > 0.55) {
         this._slow++; this._fast = 0;
-        if (this._slow >= 2) { this.renderScale = Math.max(0.55, this.renderScale - 0.08); this._slow = 0; this.resize(true); }
-      } else if (fps > 58.5 && this.renderScale < 1) {
+        if (this._slow >= 2) { this._slow = 0; apply(Math.max(0.55, this.renderScale - 0.08), -1); }
+      } else if (fps > 59 && this.renderScale < 1) {
         this._fast++; this._slow = 0;
-        if (this._fast >= 6) { this.renderScale = Math.min(1, this.renderScale + 0.05); this._fast = 0; this.resize(true); }
+        if (this._fast >= 8) { this._fast = 0; apply(Math.min(1, this.renderScale + 0.05), 1); }
       } else { this._slow = 0; this._fast = 0; }
     },
   };

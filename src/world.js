@@ -738,7 +738,7 @@
     op.box(0, 4.24, 0, EX * 2 + 0.55, 0.18, EZ * 2 + 0.55, { tile: T.CHROME, tint: C.chrome, skip: { bottom: true } });
     /* Roof deck as a ring around the monitor. A full-span slab here passes straight
        through the lantern void and is what you see when looking up from inside. */
-    const MX = 8.7, MZ0 = -0.7, MZ1 = 8.7;
+    const MX = 8.64, MZ0 = -0.64, MZ1 = 8.64;   // overlap the monitor, no seam
     const deck = (x0, x1, z0, z1) => op.tiled([x0, 4.42, z1], [x1, 4.42, z1], [x1, 4.42, z0], [x0, 4.42, z0],
       { tile: T.BLANK, tint: 0x99a3ae, flat: 1.0 });
     deck(-EX, EX, MZ1, EZ);
