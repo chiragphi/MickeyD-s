@@ -350,14 +350,33 @@
       const fl = $('friendList'); fl.innerHTML = '';
       if (!st.friends.length) fl.appendChild(el('div', 'empty', 'No friends yet. Share your code above, or add theirs.'));
       st.friends.forEach(f => {
+        const hosting = st.friendRooms[f.uid];
         const it = el('div', 'item');
         const d = el('div', 'dot' + (st.online[f.uid] ? ' on' : ''));
         const g1 = el('div', 'grow');
         g1.appendChild(el('div', 'nm', f.name));
-        g1.appendChild(el('div', 'meta', st.online[f.uid] ? 'Online' : 'Offline'));
+        g1.appendChild(el('div', 'meta', hosting ? 'In a kitchen · ' + hosting
+          : st.online[f.uid] ? 'Online' : 'Offline'));
+        it.append(d, g1);
+        if (hosting && !st.room) {
+          const join = el('button', 'btn sm primary', 'Join');
+          join.onclick = async () => {
+            join.disabled = true; join.textContent = 'Joining…';
+            try {
+              await g.Net.joinRoom(hosting);
+              this.toast('Joined ' + f.name + "'s kitchen", 'good');
+              this.main.onJoinedRoom();
+            } catch (e) {
+              join.disabled = false; join.textContent = 'Join';
+              $('friendErr').className = 'err';
+              $('friendErr').textContent = e.message || String(e);
+            }
+          };
+          it.appendChild(join);
+        }
         const rm = el('button', 'btn sm ghost', 'Remove');
         rm.onclick = async () => { await g.Net.removeFriend(f.uid); g.Net.refreshAllow(); };
-        it.append(d, g1, rm);
+        it.appendChild(rm);
         fl.appendChild(it);
       });
 
@@ -395,6 +414,15 @@
       });
       $('btnHost').disabled = !!st.room;
       $('btnJoin').disabled = !!st.room;
+      const hostingFriends = st.friends.filter(f => st.friendRooms[f.uid]);
+      const hint = $('friendHosting');
+      if (hint) {
+        hint.style.display = (!st.room && hostingFriends.length) ? '' : 'none';
+        hint.textContent = hostingFriends.length
+          ? hostingFriends.map(f => f.name).join(', ') + (hostingFriends.length > 1 ? ' have' : ' has')
+            + ' a kitchen open — join from the Friends tab'
+          : '';
+      }
     },
 
     async renderBoard(scope) {
@@ -532,9 +560,16 @@
       };
       $('btnHost').onclick = async () => {
         $('roomErr').textContent = '';
-        try { const code = await g.Net.createRoom(); this.toast('Kitchen ' + code + ' is open', 'good'); }
-        catch (e) { $('roomErr').textContent = e.message || String(e); }
+        $('btnHost').disabled = true;
+        try {
+          const code = await g.Net.createRoom();
+          this.toast('Kitchen ' + code + ' is open — friends can join from their Friends tab', 'good');
+          this.renderNet();
+        } catch (e) { $('roomErr').textContent = e.message || String(e); }
+        $('btnHost').disabled = !!g.Net.state.room;
       };
+      // opening a kitchen, or joining one, should drop you straight into the shift
+      $('btnPlayRoom').onclick = () => this.main.onJoinedRoom();
       $('btnJoin').onclick = async () => {
         $('roomErr').textContent = '';
         try {

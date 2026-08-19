@@ -16,6 +16,7 @@
     uid: null, name: null, code: null,
     friends: [], invites: [], online: {},
     room: null, isHost: true, hostUid: null,
+    friendRooms: {},        // friendUid -> room code they are hosting, if any
     peers: {},          // uid -> {name, x, y, z, yaw, anim, hold, t, ix, iz, iyaw}
     members: {},
     lastError: null,
@@ -186,6 +187,9 @@
       const v = s.val() || {};
       state.friends = Object.keys(v).map(uid => ({ uid, name: v[uid].name || 'Crew', since: v[uid].since }));
       state.friends.forEach(f => watchStatus(f.uid));
+      /* Someone added while a kitchen is already open would otherwise be missing
+         from its allow-list and be refused at the door. */
+      if (state.room && state.isHost) refreshAllow();
       notify();
     });
     refs.invites = onValue(ref(fb.db, 'invites/' + state.uid), (s) => {
@@ -202,6 +206,12 @@
     fb.onValue(fb.ref(fb.db, 'status/' + uid), (s) => {
       const v = s.val();
       state.online[uid] = !!(v && v.online);
+      notify();
+    });
+    // a friend's open kitchen, so it can be joined without passing a code around
+    fb.onValue(fb.ref(fb.db, 'players/' + uid + '/room'), (s) => {
+      const code = s.val();
+      if (code) state.friendRooms[uid] = code; else delete state.friendRooms[uid];
       notify();
     });
   }
@@ -241,7 +251,15 @@
   async function createRoom() {
     if (!state.ready) throw new Error('Not connected.');
     const code = makeCode();
+    /* Read the friends list straight from the database rather than trusting the
+       local cache, so a kitchen opened before the listener has caught up still
+       admits everyone it should. */
     const allow = { [state.uid]: true };
+    try {
+      const fs = await fb.get(fb.ref(fb.db, 'friends/' + state.uid));
+      const v = fs.val() || {};
+      Object.keys(v).forEach(uid => { allow[uid] = true; });
+    } catch (e) { /* fall back to the cache below */ }
     state.friends.forEach(f => { allow[f.uid] = true; });
     await fb.set(fb.ref(fb.db, 'rooms/' + code), {
       host: state.uid, hostName: state.name, created: fb.serverTimestamp(), open: true,
@@ -249,6 +267,10 @@
       members: { [state.uid]: { name: state.name, host: true, t: fb.serverTimestamp() } },
     });
     fb.onDisconnect(fb.ref(fb.db, 'rooms/' + code)).remove();
+    // advertise it to friends, and retract it if this tab goes away
+    const meRef = fb.ref(fb.db, 'players/' + state.uid);
+    await fb.update(meRef, { room: code });
+    fb.onDisconnect(meRef).update({ room: null });
     await enterRoom(code, true);
     return code;
   }
@@ -327,6 +349,7 @@
     notify();
     if (!code || !state.ready) return;
     try {
+      await fb.update(fb.ref(fb.db, 'players/' + state.uid), { room: null });
       if (wasHost) await fb.remove(fb.ref(fb.db, 'rooms/' + code));
       else {
         await fb.remove(fb.ref(fb.db, `rooms/${code}/players/${state.uid}`));
