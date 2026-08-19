@@ -291,27 +291,56 @@
     },
 
     /* -------------------- multiplayer panels -------------------- */
+    /* The project config is resolved asynchronously from /api/config, so there is
+       nothing to gate on synchronously — asking Net.configured before it has been
+       fetched always says no, which is what made a perfectly healthy project look
+       like it was never set up. Always attempt the connection and let it report. */
     async connect(silent) {
       const badge = $('netBadge');
-      if (!g.Net.configured) { badge.textContent = 'Not set up'; badge.className = 'badge'; this.renderNet(); return false; }
+      if (this._connecting) return this._connecting;
       badge.textContent = 'Connecting…'; badge.className = 'badge';
-      const ok = await g.Net.connect();
-      badge.textContent = ok ? 'Online' : 'Offline';
-      badge.className = 'badge' + (ok ? ' live' : '');
-      if (!ok && !silent && g.Net.state.error && g.Net.state.error !== 'no-config') $('cfgErr').textContent = g.Net.state.error;
+      this._checked = false;
       this.renderNet();
-      return ok;
+
+      this._connecting = (async () => {
+        const ok = await g.Net.connect();
+        this._checked = true;
+        this._connecting = null;
+        badge.textContent = ok ? 'Online' : (g.Net.state.error === 'no-config' ? 'Not set up' : 'Offline');
+        badge.className = 'badge' + (ok ? ' live' : '');
+        if (!ok && !silent && g.Net.state.error && g.Net.state.error !== 'no-config') {
+          $('cfgErr').className = 'err';
+          $('cfgErr').textContent = g.Net.state.error;
+        }
+        this.renderNet();
+        return ok;
+      })();
+      return this._connecting;
     },
 
     renderNet() {
       const st = g.Net.state;
       const on = st.ready;
+      const checking = !!this._connecting || (!on && !this._checked);
       $('kitchenOffline').style.display = on ? 'none' : '';
       $('kitchenOnline').style.display = on ? '' : 'none';
       $('friendsOffline').style.display = on ? 'none' : '';
       $('friendsOnline').style.display = on ? '' : 'none';
-      $('netBadge').textContent = on ? 'Online' : (g.Net.configured ? 'Offline' : 'Not set up');
+      $('netBadge').textContent = on ? 'Online' : checking ? 'Connecting…'
+        : (st.error === 'no-config' ? 'Not set up' : 'Offline');
       $('netBadge').className = 'badge' + (on ? ' live' : '');
+      [['kitchenOffline'], ['friendsOffline']].forEach(([id]) => {
+        const box = $(id);
+        const msg = box.querySelector('.msg');
+        if (msg) {
+          msg.textContent = checking ? 'Checking for a multiplayer server…'
+            : st.error === 'no-config'
+              ? 'No multiplayer server is configured for this site. You can point the game at your own Firebase project instead.'
+              : st.error
+                ? 'Could not reach the multiplayer server: ' + st.error
+                : 'Not connected.';
+        }
+      });
       if (!on) return;
 
       $('myCode').textContent = st.code || '——————';
@@ -479,7 +508,15 @@
           $('cfgErr').textContent = e.message || String(e);
         }
       };
-      $('btnClearCfg').onclick = () => { g.Net.clearConfig(); $('inCfg').value = ''; $('cfgErr').textContent = 'Cleared.'; };
+      $('btnClearCfg').onclick = () => {
+        g.Net.clearConfig(); $('inCfg').value = '';
+        $('cfgErr').className = 'err ok';
+        $('cfgErr').textContent = 'Cleared — the site\'s own project will be used again. Reload to apply.';
+      };
+      ['btnRetryNet', 'btnRetryNet2'].forEach(id => {
+        const b = $(id);
+        if (b) b.onclick = () => this.connect(false);
+      });
       $('btnName').onclick = () => g.Net.setName($('inName').value);
       $('inName').onkeydown = (e) => { if (e.key === 'Enter') g.Net.setName($('inName').value); };
       $('btnCopy').onclick = () => { navigator.clipboard && navigator.clipboard.writeText(g.Net.state.code || ''); $('btnCopy').textContent = 'Copied'; setTimeout(() => $('btnCopy').textContent = 'Copy', 1200); };
@@ -531,7 +568,7 @@
 
       this.syncSettings();
       this.initHud();
-      if (g.Net.configured) this.connect(true);
+      this.connect(true);
     },
   };
 
