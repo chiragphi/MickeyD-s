@@ -17,50 +17,133 @@
     pointerLocked: false,
 
     async boot() {
-      const load = document.getElementById('loadTxt');
+      /* Everything below runs inside one guard. A silent throw here used to leave
+         the loading screen up forever with no clue why — which is exactly what a
+         weak Chromebook would hit. Now any failure, including one we never
+         anticipated, surfaces on screen with copyable diagnostics. */
+      this._diag = [];
+      const note = (m) => { this._diag.push(m); };
+      const stall = setTimeout(() => this.fail('Loading is taking too long',
+        new Error('Boot did not finish within 25 seconds.')), 25000);
+
       try {
-        this.renderer = new g.Renderer(canvas);
+        note('ua: ' + navigator.userAgent);
+        note('cores: ' + (navigator.hardwareConcurrency || '?') + ' · memory: ' + (navigator.deviceMemory || '?') + 'GB');
+
+        this.setLoad('Starting graphics…');
+        try {
+          this.renderer = new g.Renderer(canvas);
+        } catch (e) {
+          clearTimeout(stall);
+          this.fail('WebGL is unavailable', e,
+            'Try enabling hardware acceleration in your browser settings, then reload. ' +
+            'On a managed Chromebook this may be turned off by policy.');
+          return;
+        }
+        note('gpu: ' + (this.renderer.gpu || 'unknown'));
+        note('uint32 indices: ' + this.renderer.uintIndex);
+
+        const opts = UI.loadOpts(this.renderer.gpu);
+        g.GameData.SFX.enabled = opts.sound;
+        note('preset: ' + opts.quality);
+
+        /* Drivers without 32-bit indices cap a mesh at 65 535 vertices, so those
+           machines get a lighter world rather than a failed load. */
+        const lite = !this.renderer.uintIndex || opts.quality === 'potato';
+        note('detail: ' + (lite ? 'lite' : 'full'));
+
+        this.setLoad('Painting textures…');
+        await frame();
+        this.renderer.texture(g.Atlas.build(), true);
+
+        this.setLoad('Building the restaurant…');
+        await frame();
+        let world = g.World.build({ lite });
+        if (world.opaque.verts > 65535 && !this.renderer.uintIndex) {
+          note('rebuilding lite: ' + world.opaque.verts + ' verts over the 16-bit limit');
+          world = g.World.build({ lite: true });
+        }
+        const models = g.Models.build();
+        note('world: ' + world.opaque.verts + ' verts');
+
+        this.setLoad('Firing up the grill…');
+        await frame();
+        this.game = new g.Game(this.renderer, world, models, opts);
+        this.game.onToast = (m, k) => UI.toast(m, k);
+        this.game.onLevel = (lvl, unlock) => {
+          UI.toast(unlock ? `Level ${lvl}! Unlocked ${unlock.name} ${unlock.icon}` : `Level ${lvl}!`, 'good');
+        };
+
+        g.Net.on('sim', (v) => this.game.applySim(v));
+        g.Net.on('event', (v) => this.game.applyEvent(v));
+
+        UI.bind(this);
+        this.bindInput();
+        this.resize(true);
+
+        this.stats = {
+          verts: world.opaque.verts + world.emis.verts + world.decal.verts + world.glass.verts + models.verts,
+          tris: world.opaque.tris + world.emis.tris + world.decal.tris + world.glass.tris + models.tris,
+        };
+        console.log(`[golden shift] ${this.stats.verts | 0} verts / ${this.stats.tris | 0} tris · `
+          + `gpu: ${this.renderer.gpu || 'unknown'} · preset: ${opts.quality}${lite ? ' (lite)' : ''}`);
+
+        clearTimeout(stall);
+        document.getElementById('loading').classList.add('done');
+        this.last = performance.now();
+        requestAnimationFrame(this.loop.bind(this));
       } catch (e) {
-        document.getElementById('loading').innerHTML =
-          '<div class="l" style="max-width:420px;text-align:center">' +
-          '<h1 style="font-size:22px;margin-bottom:10px">WebGL unavailable</h1>' +
-          '<p style="color:#98a2b0;font-size:13px;line-height:1.6">' + (e.message || e) +
-          '<br><br>Try enabling hardware acceleration in your browser settings, then reload.</p></div>';
-        return;
+        clearTimeout(stall);
+        this.fail('Could not start the game', e);
       }
+    },
 
-      const opts = UI.loadOpts(this.renderer.gpu);
-      g.GameData.SFX.enabled = opts.sound;
+    setLoad(text) {
+      const el = document.getElementById('loadTxt');
+      if (el) el.textContent = text;
+    },
 
-      load.textContent = 'Painting textures…';
-      await frame();
-      this.renderer.texture(g.Atlas.build(), true);
-
-      load.textContent = 'Building the restaurant…';
-      await frame();
-      const world = g.World.build();
-      const models = g.Models.build();
-
-      this.game = new g.Game(this.renderer, world, models, opts);
-      this.game.onToast = (m, k) => UI.toast(m, k);
-      this.game.onLevel = (lvl, unlock) => {
-        UI.toast(unlock ? `Level ${lvl}! Unlocked ${unlock.name} ${unlock.icon}` : `Level ${lvl}!`, 'good');
+    /* Visible, copyable failure — never leave a spinner running with no reason. */
+    fail(title, err, hint) {
+      const detail = (err && (err.stack || err.message)) || String(err);
+      const diag = (this._diag || []).concat(['error: ' + detail]).join('\n');
+      const box = document.getElementById('loading');
+      if (!box) return;
+      box.classList.remove('done');
+      box.innerHTML = '';
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'max-width:560px;padding:24px;text-align:left';
+      const h = document.createElement('h1');
+      h.textContent = title;
+      h.style.cssText = 'font-size:22px;font-weight:700;margin-bottom:10px;letter-spacing:-.02em';
+      const p = document.createElement('p');
+      p.textContent = hint || 'The details below help track this down.';
+      p.style.cssText = 'color:#a1a1aa;font-size:14px;line-height:1.6;margin-bottom:14px';
+      const pre = document.createElement('textarea');
+      pre.readOnly = true;
+      pre.value = diag;
+      pre.style.cssText = 'width:100%;height:190px;background:#17171a;color:#d4d4d8;border:1px solid #2a2a30;'
+        + 'border-radius:12px;padding:12px;font:12px ui-monospace,Menlo,monospace;resize:vertical';
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:10px;margin-top:14px';
+      const copy = document.createElement('button');
+      copy.textContent = 'Copy details';
+      copy.style.cssText = 'padding:11px 18px;border-radius:999px;background:#fff;color:#09090b;'
+        + 'font-weight:600;font-size:14px;border:0;cursor:pointer';
+      copy.onclick = () => {
+        pre.select();
+        try { navigator.clipboard.writeText(diag); } catch (e) { document.execCommand('copy'); }
+        copy.textContent = 'Copied';
       };
-
-      g.Net.on('sim', (v) => this.game.applySim(v));
-      g.Net.on('event', (v) => this.game.applyEvent(v));
-
-      UI.bind(this);
-      this.bindInput();
-      this.resize(true);
-
-      this.stats = { verts: world.opaque.verts + world.emis.verts + world.decal.verts + world.glass.verts + models.verts,
-                     tris: world.opaque.tris + world.emis.tris + world.decal.tris + world.glass.tris + models.tris };
-      console.log(`[golden shift] world ${this.stats.verts | 0} verts / ${this.stats.tris | 0} tris · gpu: ${this.renderer.gpu || 'unknown'} · preset: ${opts.quality}`);
-
-      document.getElementById('loading').classList.add('done');
-      this.last = performance.now();
-      requestAnimationFrame(this.loop.bind(this));
+      const again = document.createElement('button');
+      again.textContent = 'Reload';
+      again.style.cssText = 'padding:11px 18px;border-radius:999px;background:#27272a;color:#fff;'
+        + 'font-weight:600;font-size:14px;border:0;cursor:pointer';
+      again.onclick = () => location.reload();
+      row.append(copy, again);
+      wrap.append(h, p, pre, row);
+      box.appendChild(wrap);
+      console.error('[golden shift]', title, err);
     },
 
     /* ---------------- lifecycle ---------------- */
@@ -261,7 +344,15 @@
     },
   };
 
-  const frame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+  /* Yield to the browser so the loading text can repaint. Raced against a timer:
+     a background or throttled tab never fires rAF, which would otherwise stall
+     the whole boot indefinitely. */
+  const frame = () => new Promise(r => {
+    let done = false;
+    const fin = () => { if (!done) { done = true; r(); } };
+    try { requestAnimationFrame(() => setTimeout(fin, 0)); } catch (e) { /* ignore */ }
+    setTimeout(fin, 150);
+  });
 
   g.Main = Main;
   if (document.readyState === 'loading') addEventListener('DOMContentLoaded', () => Main.boot());

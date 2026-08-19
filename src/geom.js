@@ -97,6 +97,9 @@
       this._markName = null;
     }
 
+    /* NOTE: ao is packed into an unsigned byte, so values above 1.0 clamp to 1.0.
+       `flat` can darken a surface but can never brighten it past full — lift
+       under-lit surfaces with the environment's ground/bounce colour instead. */
     vert(x, y, z, nx, ny, nz, u, v, r, gg, b, ao) {
       const m = this.mat;
       if (m) {

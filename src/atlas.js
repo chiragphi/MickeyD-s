@@ -16,6 +16,7 @@
     CHECKER: 16, GRASS: 17, LEAF: 18, BRICK: 19, SIGN: 20, QUARRY: 21, CONCRETE: 22, AWNING: 23,
     CHECKER_BIG: 24, DOTS: 25, STUCCO: 26, TRUNK: 27, DECK: 28, NEON: 29, ROOF: 30, CURB: 31,
     SIGN_NAME: 32, SIGN_DRIVE: 33, SIGN_OPEN: 34, SIGN_MENU: 35,
+    CHECKER_BW: 36, TERRAZZO_RED: 37, PANEL_RED: 38, MARBLE: 39,
   };
 
   /* Palette — every tile pulls from here so the whole world stays in one key. */
@@ -351,6 +352,49 @@
       fill(o, s, '#d9d4c8');
       o.fillStyle = P.yellow; o.fillRect(0, s * 0.34, s, s * 0.32);
       speckle(o, s, ['#c6c1b5'], 60, 3, 0.3);
+    });
+
+    /* 36 — the diner checkerboard, 2x2 so the squares stay big and chunky */
+    cell(T.CHECKER_BW, (o, s) => {
+      const n = 2, t = s / n;
+      for (let iy = 0; iy < n; iy++) for (let ix = 0; ix < n; ix++) {
+        o.fillStyle = ((ix + iy) & 1) ? '#22242a' : '#f7f5f0';
+        o.fillRect(ix * t, iy * t, t + 0.5, t + 0.5);
+      }
+      o.globalAlpha = 0.10;
+      for (let i = 0; i < 60; i++) {
+        o.fillStyle = i & 1 ? '#000' : '#fff';
+        o.fillRect(Math.random() * s, Math.random() * s, 3, 3);
+      }
+      o.globalAlpha = 1;
+    });
+
+    /* 37 — red speckled terrazzo for floor borders */
+    cell(T.TERRAZZO_RED, (o, s) => {
+      fill(o, s, '#b8232a');
+      speckle(o, s, ['#8e161c', '#d94b50', '#ffffff', '#f0c0c2'], 200, 3, 0.35);
+    });
+
+    /* 38 — deep red wall panel with a subtle sheen */
+    cell(T.PANEL_RED, (o, s) => {
+      const gr = o.createLinearGradient(0, 0, 0, s);
+      gr.addColorStop(0, '#e8262d'); gr.addColorStop(1, '#c0161c');
+      o.fillStyle = gr; o.fillRect(0, 0, s, s);
+    });
+
+    /* 39 — pale marble for counter tops */
+    cell(T.MARBLE, (o, s) => {
+      fill(o, s, '#f2efe9');
+      for (let i = 0; i < 12; i++) {
+        o.strokeStyle = `rgba(150,146,138,${0.10 + Math.random() * 0.16})`;
+        o.lineWidth = 0.8 + Math.random() * 2;
+        o.beginPath();
+        const y = Math.random() * s;
+        o.moveTo(0, y);
+        o.bezierCurveTo(s * 0.3, y + (Math.random() - 0.5) * 30, s * 0.7, y + (Math.random() - 0.5) * 30, s, y + (Math.random() - 0.5) * 18);
+        o.stroke();
+      }
+      speckle(o, s, ['#e2ded4', '#ffffff'], 90, 3, 0.3);
     });
 
     /* ---- lettered signs ----

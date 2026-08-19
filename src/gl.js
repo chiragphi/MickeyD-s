@@ -68,13 +68,31 @@ void main(){
 
   class Renderer {
     constructor(canvas) {
-      const opts = {
-        alpha: false, antialias: false, depth: true, stencil: false,
-        powerPreference: 'low-power', preserveDrawingBuffer: false,
-        desynchronized: true, failIfMajorPerformanceCaveat: false,
-      };
-      const gl = canvas.getContext('webgl', opts) || canvas.getContext('experimental-webgl', opts);
-      if (!gl) throw new Error('WebGL is not available in this browser.');
+      /* Old ChromeOS drivers reject some context attributes outright rather than
+         ignoring them, so fall back through progressively plainer requests
+         instead of giving up on the first null. */
+      const attempts = [
+        { alpha: false, antialias: false, depth: true, stencil: false,
+          powerPreference: 'low-power', preserveDrawingBuffer: false,
+          desynchronized: true, failIfMajorPerformanceCaveat: false },
+        { alpha: false, antialias: false, depth: true, stencil: false,
+          failIfMajorPerformanceCaveat: false },
+        { alpha: false, depth: true },
+        undefined,
+      ];
+      let gl = null;
+      const tried = [];
+      for (const o of attempts) {
+        for (const name of ['webgl', 'experimental-webgl']) {
+          try { gl = canvas.getContext(name, o); } catch (e) { tried.push(name + ': ' + e.message); }
+          if (gl) break;
+        }
+        if (gl) break;
+      }
+      if (!gl) {
+        throw new Error('WebGL could not be created. Your browser or graphics driver may have it disabled.'
+          + (tried.length ? ' (' + tried.join('; ') + ')' : ''));
+      }
       this.gl = gl;
       this.canvas = canvas;
       this.uintIndex = !!gl.getExtension('OES_element_index_uint');
@@ -149,7 +167,10 @@ void main(){
       const ibo = gl.createBuffer();
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
       let index = built.index;
-      if (built.big && !this.uintIndex) throw new Error('Mesh too large for 16-bit indices.');
+      if (built.big && !this.uintIndex) {
+        throw new Error('MESH_TOO_BIG: ' + built.verts + ' vertices needs 32-bit indices, '
+          + 'which this driver does not expose (OES_element_index_uint).');
+      }
       gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, index, dynamic ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW);
       const m = {
         vbo, ibo, count: index.length, ranges: built.ranges, verts: built.verts, tris: built.tris,

@@ -151,10 +151,12 @@
 
       this.env = {
         sunDir: new Float32Array([0.42, 0.83, 0.36]),
-        sunCol: new Float32Array([0.40, 0.36, 0.29]),
-        skyCol: new Float32Array([0.78, 0.80, 0.85]),
-        grdCol: new Float32Array([0.57, 0.55, 0.53]),
-        fog: [0.66, 0.78, 0.89],
+        sunCol: new Float32Array([0.42, 0.38, 0.30]),
+        skyCol: new Float32Array([0.74, 0.77, 0.82]),
+        // strong bounce: ceilings and soffits face down and receive nothing else,
+        // and the AO byte cannot brighten past 1.0, so this is the only lever
+        grdCol: new Float32Array([0.92, 0.90, 0.87]),
+        fog: [0.44, 0.71, 0.95],
         fogK: 0.00022,
       };
       const len = Math.hypot(this.env.sunDir[0], this.env.sunDir[1], this.env.sunDir[2]);
