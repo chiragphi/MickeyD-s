@@ -182,3 +182,23 @@ vercel.json             static hosting config and cache headers
 ```
 
 No build step. No package manager. Edit a file and reload.
+
+---
+
+## If it will not start
+
+The game reports failures rather than hanging, and tries to recover on its own:
+
+1. **Full detail fails → it retries in safe mode automatically** (512px atlas, lite
+   world, no mipmaps or particles). You'll see a "running in safe mode" notice.
+2. **A script did not arrive** — common behind school network filters or a stale
+   proxy cache — it names the file and re-fetches it with a cache-busting URL.
+3. **Both fail** → an on-screen panel shows the actual error plus **Copy details**
+   (user agent, GPU, driver limits, extensions, vertex counts, stack) and a
+   **Try safe mode** button.
+
+You can force the conservative path at any time by adding `?safe=1` to the URL.
+
+Assets are served `must-revalidate` rather than `immutable`: the files are tiny,
+and a caching proxy that ignores the `?v=` query string would otherwise pin an
+old copy for a year.

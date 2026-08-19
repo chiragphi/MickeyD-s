@@ -16,6 +16,52 @@
     input: { f: 0, b: 0, l: 0, r: 0, sprint: 0, jump: 0 },
     pointerLocked: false,
 
+    /* Modules are plain classic scripts. On a filtered school network or behind a
+       caching proxy an individual file can fail to arrive, leaving its global
+       undefined and producing a bare "cannot read properties of undefined". Check
+       for that explicitly, and try to re-fetch what is missing before giving up. */
+    async ensureModules() {
+      const need = [
+        ['M4', 'math.js'], ['MathX', 'math.js'], ['Atlas', 'atlas.js'], ['Geom', 'geom.js'],
+        ['Renderer', 'gl.js'], ['Models', 'models.js'], ['World', 'world.js'],
+        ['Net', 'net.js'], ['Game', 'game.js'], ['UI', 'ui.js'],
+      ];
+      const missing = () => need.filter(([sym]) => !g[sym]);
+      let gone = missing();
+      if (!gone.length) return true;
+
+      this.note('missing globals: ' + gone.map(m => m[0] + ' (' + m[1] + ')').join(', '));
+      if (g.__loadErrors && g.__loadErrors.length) this.note('script load errors: ' + g.__loadErrors.join(', '));
+
+      this.setLoad('Re-fetching game files…');
+      const files = [];
+      gone.forEach(([, file]) => { if (files.indexOf(file) < 0) files.push(file); });
+      for (const file of files) {
+        try {
+          await new Promise((res, rej) => {
+            const el = document.createElement('script');
+            el.src = 'src/' + file + '?cb=' + Date.now() + Math.random().toString(36).slice(2);
+            el.onload = res;
+            el.onerror = () => rej(new Error('could not fetch src/' + file));
+            document.head.appendChild(el);
+          });
+          this.note('refetched ' + file);
+        } catch (e) {
+          this.note('refetch failed: ' + file);
+        }
+      }
+
+      gone = missing();
+      if (gone.length) {
+        throw new Error('Some game files did not load: '
+          + gone.map(m => m[1]).filter((v, i, a) => a.indexOf(v) === i).join(', ')
+          + '. A network filter or a stale cache is usually the cause — try a hard refresh '
+          + '(Ctrl+Shift+R), or a different network.');
+      }
+      this.note('all modules recovered');
+      return true;
+    },
+
     async boot() {
       this._diag = [];
       const note = (m) => { this._diag.push(m); };
@@ -24,6 +70,17 @@
       note('ua: ' + navigator.userAgent);
       note('cores: ' + (navigator.hardwareConcurrency || '?') + ' · memory: ' + (navigator.deviceMemory || '?') + 'GB'
         + ' · dpr: ' + (window.devicePixelRatio || 1));
+
+      note('scripts loaded: ' + ((g.__loadOk || []).length) + (g.__loadErrors && g.__loadErrors.length
+        ? ' · failed: ' + g.__loadErrors.join(',') : ''));
+
+      try {
+        await this.ensureModules();
+      } catch (e) {
+        this.fail('Some game files did not load', e,
+          'This is usually a network filter or a stale cache rather than your device.');
+        return;
+      }
 
       const forced = /[?&]safe=1/.test(location.search);
       /* Two passes: full detail, then a conservative one. A weak machine that
