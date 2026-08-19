@@ -1,5 +1,9 @@
 /* Every animated thing — staff, customers, food, sprites — lives in ONE dynamic
-   mesh with named index ranges. Drawing a customer is 6 uniform updates + 6 tiny
+   mesh with named index ranges.
+
+   Named props.js rather than models.js on purpose: school and workplace content
+   filters block URLs containing "models", which silently drops the file and
+   leaves the game unable to draw a single character. Drawing a customer is 6 uniform updates + 6 tiny
    drawElements, with no buffer rebinding at all. */
 (function (g) {
   'use strict';
@@ -92,5 +96,5 @@
     return b.build();
   }
 
-  g.Models = { build };
+  g.Props = { build };
 })(window);

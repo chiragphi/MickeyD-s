@@ -23,7 +23,7 @@
     async ensureModules() {
       const need = [
         ['M4', 'math.js'], ['MathX', 'math.js'], ['Atlas', 'atlas.js'], ['Geom', 'geom.js'],
-        ['Renderer', 'gl.js'], ['Models', 'models.js'], ['World', 'world.js'],
+        ['Renderer', 'gl.js'], ['Props', 'props.js'], ['World', 'world.js'],
         ['Net', 'net.js'], ['Game', 'game.js'], ['UI', 'ui.js'],
       ];
       const missing = () => need.filter(([sym]) => !g[sym]);
@@ -36,18 +36,35 @@
       this.setLoad('Re-fetching game files…');
       const files = [];
       gone.forEach(([, file]) => { if (files.indexOf(file) < 0) files.push(file); });
+      const bust = () => '?cb=' + Date.now() + Math.random().toString(36).slice(2);
       for (const file of files) {
+        let ok = false;
+        // route 1: a fresh script tag on a cache-busted URL
         try {
           await new Promise((res, rej) => {
             const el = document.createElement('script');
-            el.src = 'src/' + file + '?cb=' + Date.now() + Math.random().toString(36).slice(2);
+            el.src = 'src/' + file + bust();
             el.onload = res;
-            el.onerror = () => rej(new Error('could not fetch src/' + file));
+            el.onerror = () => rej(new Error('script tag blocked'));
             document.head.appendChild(el);
           });
+          ok = true;
           this.note('refetched ' + file);
-        } catch (e) {
-          this.note('refetch failed: ' + file);
+        } catch (e) { this.note('script-tag refetch failed: ' + file); }
+
+        // route 2: fetch the source and run it. Some filters reject script-type
+        // requests but allow a plain XHR for the same URL.
+        if (!ok) {
+          try {
+            const r = await fetch('src/' + file + bust(), { credentials: 'same-origin' });
+            if (!r.ok) throw new Error('status ' + r.status);
+            const code = await r.text();
+            if (!/\S/.test(code)) throw new Error('empty response');
+            (0, eval)(code);
+            this.note('recovered ' + file + ' via fetch');
+          } catch (e2) {
+            this.note('fetch recovery failed: ' + file + ' (' + (e2 && e2.message || e2) + ')');
+          }
         }
       }
 
@@ -55,8 +72,8 @@
       if (gone.length) {
         throw new Error('Some game files did not load: '
           + gone.map(m => m[1]).filter((v, i, a) => a.indexOf(v) === i).join(', ')
-          + '. A network filter or a stale cache is usually the cause — try a hard refresh '
-          + '(Ctrl+Shift+R), or a different network.');
+          + '. A network content filter or a stale cache is usually the cause, not your device. '
+          + 'Try a hard refresh (Ctrl+Shift+R), or a different network such as a phone hotspot.');
       }
       this.note('all modules recovered');
       return true;
@@ -165,7 +182,7 @@
           note('rebuilding lite: ' + world.opaque.verts + ' verts over the 16-bit limit');
           world = g.World.build({ lite: true });
         }
-        const models = g.Models.build();
+        const models = g.Props.build();
         note('world: ' + world.opaque.verts + ' verts');
 
         this.setLoad('Firing up the grill…');

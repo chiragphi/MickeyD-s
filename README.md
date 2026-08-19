@@ -169,7 +169,7 @@ src/math.js             mat4 / vector helpers, seeded PRNG
 src/atlas.js            procedural 512×512 texture atlas (16 tiles)
 src/geom.js             geometry builder — boxes, cylinders, tiled quads, baked AO
 src/gl.js               the WebGL1 renderer: one shader, four blend modes
-src/models.js           humanoids, food, props — one dynamic mesh of named ranges
+src/props.js            humanoids, food, props — one dynamic mesh of named ranges
 src/world.js            the restaurant: geometry, colliders, nav points, interaction points
 src/net.js              Firebase: auth, friend codes, rooms, sync, leaderboard
 src/game.js             player controller, customer AI, stations, economy, rendering
